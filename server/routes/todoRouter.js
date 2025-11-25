@@ -17,7 +17,7 @@ router.get("/", async (req, res, next) => {
     res.status(200).json(rows || []);
   } catch (err) {
     // Jos tietokantakyselyssä tapahtuu virhe, siirretään virhe seuraavalle
-    // middleware-funktiolle (katso edellisen tiedoston virheenkäsittelijä).
+    // middleware-funktiolle (katso app.js tiedoston virheenkäsittelijä).
     next(err);
   }
 });
