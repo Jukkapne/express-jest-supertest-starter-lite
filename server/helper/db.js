@@ -31,6 +31,6 @@ export const pool = new Pool({
   password: process.env.DB_PASSWORD,
 
   // Porttinumero, jota tietokantapalvelin kuuntelee.
-  // Käytetään ympäristömuuttujan arvoa tai oletuksena PostgreSQL:n standardia porttia 5432.
+  // Käytetään ympäristömuuttujan arvoa tai fallbackinä oletuksena PostgreSQL:n standardia porttia 5432.
   port: Number(process.env.DB_PORT || 5432)
 });
