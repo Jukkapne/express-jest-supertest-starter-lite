@@ -1,26 +1,16 @@
-// jest.config.mjs
+// jest.config.mjs — Jest configuration for the teaching edition.
 
-// Viedään (export) konfiguraatio-objekti, jonka Jest lukee käynnistyessään.
 export default {
-  // testEnvironment: "node"
-  // Määrittelee, mikä ympäristö suorittaa testit.
-  // "node" tarkoittaa, että testit suoritetaan Node.js-ympäristössä.
-  // Tämä sopii API-testaukseen ja palvelinpuolen logiikkaan, jossa ei tarvita selainominaisuuksia (kuten DOM:ia).
-  // Jos testattaisiin frontend-koodia, tässä käytettäisiin yleensä "jsdom".
+  // Run tests in a Node.js environment (no browser DOM needed for API testing).
+  // Use 'jsdom' instead if you were testing frontend/browser code.
   testEnvironment: "node",
 
-  // transform: {}
-  // Määrittelee, miten lähdetiedostot muunnetaan ennen testien suoritusta.
-  // Tyhjä objekti ({}) tarkoittaa, että muunnos (esim. Babelin käyttö modernin JavaScriptin muuntamiseen vanhempaan) on **poissa käytöstä**.
-  // Koska käytät .mjs-tiedostoja ja Node.js tukee natiivisti ES-moduuleja (import/export), et välttämättä tarvitse tätä monimutkaista muunnosta.
-  // Tämä nopeuttaa testien suoritusta.
+  // Disable source transformation.
+  // Node.js natively supports ES Modules (import/export), so Babel is not required.
+  // This keeps the setup simple and speeds up test runs.
   transform: {},
 
-  // testMatch: ["**/*.test.js"]
-  // Määrittelee ne tiedostot, jotka Jestin tulee löytää ja suorittaa testeinä.
-  // "**/*.test.js" tarkoittaa:
-  // - ** : Etsi kaikista alikansioista.
-  // - * : Kaikki tiedostonimet.
-  // - .test.js: Tiedostonimen täytyy päättyä tähän päätteeseen (esim. 'todoRouter.test.js').
+  // Only pick up files ending in '.test.js' as test files.
+  // Example match: 'app.int.test.js', 'todoRouter.test.js'.
   testMatch: ["**/*.test.js"]
 };

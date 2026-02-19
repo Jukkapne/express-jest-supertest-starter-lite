@@ -1,84 +1,92 @@
-import request from "supertest"; // Tuodaan Supertest-kirjasto. Sitä käytetään HTTP-pyyntöjen tekemiseen Express-sovellukseen ilman varsinaista palvelimen käynnistämistä (ns. end-to-end-testaus).
-import dotenv from "dotenv"; // Tuodaan dotenv ympäristömuuttujien lataamista varten.
-dotenv.config(); // Ladataan ympäristömuuttujat .env-tiedostosta (tarvitaan JWT-salaisuutta varten).
-import app from "./app.js"; // Tuodaan Express-sovellusinstanssi ('app'), jota testataan.
-import { pool } from "./helper/db.js"; // Tuodaan tietokantayhteyspooli (pool) tietokantayhteyden sulkemiseksi testien jälkeen.
-import jwt from "jsonwebtoken"; // Tuodaan jsonwebtoken tokenien luomista varten testeissä.
+import request from "supertest"; // Supertest lets us send HTTP requests directly to the Express app without starting a real server.
+import dotenv from "dotenv"; // Load environment variables (needed for JWT_SECRET).
+dotenv.config();
+import app from "./app.js"; // The Express application under test.
+import jwt from "jsonwebtoken"; // Used to generate a valid JWT token for protected-route tests.
+import * as todoRepo from "./repository/todoRepository.js"; // The in-memory repository — used to reset state between tests.
 
 /**
- * Apuohjelmafunktio: Luo kelvollinen JWT-tunnus testausta varten.
- * Käytetään simuloimaan onnistuneesti sisäänkirjautunutta käyttäjää.
- * @param {string} email - Käyttäjän sähköposti, joka lisätään tokenin payloadiin.
- * @returns {string} - Kelvollinen JWT-tunnus.
+ * Helper: generates a valid JWT token for use in authenticated requests.
+ * The token is signed with the same JWT_SECRET the server uses, so the 'auth' middleware accepts it.
+ * @param {string} email - Payload value; any string works for testing purposes.
+ * @returns {string} A signed JWT token string.
  */
 const getToken = (email = "student@example.com") =>
   jwt.sign({ email }, process.env.JWT_SECRET);
-// jwt.sign luo tokenin käyttäen salaista avainta (JWT_SECRET) ympäristömuuttujista.
 
-// --- Testien siivous ---
+// --- Test isolation ---
 
-// afterAll on Jest/Mocha-testauskehyksen funktio, joka suoritetaan sen jälkeen, kun KAIKKI testit tässä tiedostossa ovat valmiit.
-afterAll(async () => {
-  // Suljetaan tietokantayhteyspooli, jotta Node.js-prosessi voi sammua siististi testien päätyttyä.
-  await pool.end();
+// beforeEach runs before every individual test.
+// Resetting the repository ensures each test starts with an empty task list,
+// so tests cannot interfere with one another.
+beforeEach(() => {
+  todoRepo.reset();
 });
 
-// --- Testitapaukset ---
+// --- Test cases ---
 
 /**
- * Testi 1: Testataan GET / (Hae kaikki tehtävät) -päätepistettä.
- * Tavoite: Varmistaa, että päätepiste palauttaa HTTP 200 -tilakoodin ja vastauksena JSON-taulukon.
+ * Test 1: GET / (fetch all tasks)
+ * Goal: verify the endpoint returns HTTP 200 and a JSON array.
  */
-test("1) GET / palauttaa listan (200 + array)", async () => {
-  // Tehdään GET-pyyntö juuripolkuun (/). request(app) ohjaa pyynnön suoraan Express-sovellukseen.
+test("1) GET / returns a list (200 + array)", async () => {
+  // Send a GET request to '/'. request(app) routes it directly through Express.
   const res = await request(app).get("/");
-  // Odotetaan, että vastauksen HTTP-tilakoodi on 200 (OK).
+
+  // The response status code must be 200 (OK).
   expect(res.status).toBe(200);
-  // Odotetaan, että vastauksen runko (res.body) on JavaScript-taulukko.
+
+  // The response body must be a JavaScript array.
   expect(Array.isArray(res.body)).toBe(true);
 });
 
 /**
- * Testi 2: Testataan POST /create (Luo tehtävä) -päätepistettä ilman todennusta.
- * Tavoite: Varmistaa, että päätepiste on suojattu ja palauttaa 401 Unauthorized (Luvaton) ilman JWT-tunnusta.
+ * Test 2: POST /create without authentication
+ * Goal: verify the endpoint is protected and returns 401 Unauthorized when no token is provided.
  */
-test("2) POST /create ilman tokenia → 401", async () => {
+test("2) POST /create without a token → 401", async () => {
   const res = await request(app)
-    .post("/create") // Tehdään POST-pyyntö
-    .send({ task: { description: "X" } }); // Lähetetään tarvittava data pyynnön rungossa (body).
-  // Odotetaan 401, koska 'auth'-middleware (kts. aiempi tiedosto) estää pääsyn.
+    .post("/create")
+    .send({ task: { description: "X" } }); // Send body data — the request should still be rejected.
+
+  // Expect 401 because the 'auth' middleware blocks unauthenticated requests.
   expect(res.status).toBe(401);
 });
 
 /**
- * Testi 3: Testataan POST /create (Luo tehtävä) -päätepistettä kelvollisella todennuksella.
- * Tavoite: Varmistaa, että tehtävän luonti onnistuu ja palauttaa 201 Created sekä luodun tehtävän tiedot (id).
+ * Test 3: POST /create with a valid token
+ * Goal: verify that a task is created successfully and the response includes an 'id' field.
  */
-test("3) POST /create tokenilla → 201 + id", async () => {
-  const token = getToken(); // Luodaan kelvollinen testimielessä oleva JWT-tunnus.
+test("3) POST /create with a token → 201 + id", async () => {
+  const token = getToken(); // Generate a valid JWT for this request.
+
   const res = await request(app)
     .post("/create")
-    // Asetetaan Authorization-otsake (header) luodulla tokenilla. Tämä ohittaa 'auth'-middlewaren.
-    .set("Authorization", token)
+    .set("Authorization", token) // Set the Authorization header — this satisfies the 'auth' middleware.
     .send({ task: { description: "Test task" } });
-  // Odotetaan 201, joka ilmaisee resurssin onnistuneen luomisen.
+
+  // 201 Created indicates the resource was successfully added to the in-memory store.
   expect(res.status).toBe(201);
-  // Odotetaan, että vastauksena palautetulla objektilla on 'id'-ominaisuus (tarkoittaa, että se on lisätty DB:hen).
+
+  // The returned object must have an 'id' property assigned by the repository.
   expect(res.body).toHaveProperty("id");
 });
 
 /**
- * Testi 4: Testataan POST /create (Luo tehtävä) -päätepistettä puutteellisella syötteellä.
- * Tavoite: Varmistaa, että palvelin hylkää pyynnön, jos vaadittu data puuttuu, palauttaen 400 Bad Request.
+ * Test 4: POST /create with a valid token but missing body data
+ * Goal: verify that the server rejects the request with 400 Bad Request when the description is absent.
  */
-test("4) POST /create puutteellisella syötteellä → 400", async () => {
-  const token = getToken(); // Tarvitaan token, jotta testataan nimenomaan syötteen validointia, eikä todennusta.
+test("4) POST /create with missing data → 400", async () => {
+  const token = getToken(); // A token is required so we test input validation, not authentication.
+
   const res = await request(app)
     .post("/create")
     .set("Authorization", token)
-    .send({ task: null }); // Lähetetään virheellinen tai puutteellinen data.
-  // Odotetaan 400, koska validointilogiikka (kts. reititin) hylkää pyynnön.
+    .send({ task: null }); // Send deliberately incomplete data.
+
+  // 400 Bad Request — the validation logic in the router rejects this.
   expect(res.status).toBe(400);
-  // Odotetaan, että virhevastauksessa on 'error'-ominaisuus.
+
+  // The error response body must include an 'error' property.
   expect(res.body).toHaveProperty("error");
 });

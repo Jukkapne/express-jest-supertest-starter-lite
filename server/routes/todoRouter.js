@@ -1,60 +1,51 @@
-import { Router } from "express"; // Tuodaan Expressistä 'Router'-funktio, jota käytetään API-päätepisteiden (reittien) ryhmittelyyn ja määrittelyyn.
-import { pool } from "../helper/db.js"; // Tuodaan tietokantayhteys (yleensä PostgreSQL 'pool') 'db.js'-tiedostosta. Tätä käytetään SQL-kyselyjen suorittamiseen.
-import { auth } from "../helper/auth.js"; // Tuodaan autentikointi-/todennus-middleware 'auth.js'-tiedostosta. Tätä käytetään suojaamaan päätepisteitä.
+import { Router } from "express"; // Import the Express Router used to define API endpoints.
+import { auth } from "../helper/auth.js"; // Import the JWT authentication middleware.
+import * as todoRepo from "../repository/todoRepository.js"; // Import the in-memory task repository.
 
-const router = Router(); // Luodaan uusi Express-reititin-instanssi. Kaikki reitit liitetään tähän objektiin.
+const router = Router(); // Create a new router instance. All routes are attached to this object.
 
-// --- GET / Reitti (Hae kaikki tehtävät) ---
+// --- GET / route (fetch all tasks) ---
 
-// Käsittelee HTTP GET -pyynnöt polkuun '/'. Esimerkiksi http://localhost:3000/ (kun tämä reititin on liitetty juuripolkuun).
+// Handles HTTP GET requests to '/'.
+// Returns the full list of tasks currently held in memory.
 router.get("/", async (req, res, next) => {
   try {
-    // Suoritetaan SQL-kysely tietokantaan: Haetaan kaikki rivit 'task'-taulusta ja järjestetään ne ID:n mukaan nousevasti.
-    const { rows } = await pool.query("select * from task order by id asc");
+    const tasks = await todoRepo.getAll();
 
-    // Jos kysely onnistuu, palautetaan asiakkaalle (client) HTTP-tilakoodi 200 (OK).
-    // Lähetetään vastauksena JSON-muodossa haetut rivit, tai tyhjä taulukko ([]), jos rivejä ei löydy.
-    res.status(200).json(rows || []);
+    // Respond with HTTP 200 (OK) and the task array as JSON.
+    res.status(200).json(tasks);
   } catch (err) {
-    // Jos tietokantakyselyssä tapahtuu virhe, siirretään virhe seuraavalle
-    // middleware-funktiolle (katso app.js tiedoston virheenkäsittelijä).
+    // Forward any unexpected error to Express's error-handling middleware (see app.js).
     next(err);
   }
 });
 
-// --- POST /create Reitti (Luo uusi tehtävä) ---
+// --- POST /create route (create a new task) ---
 
-// Käsittelee HTTP POST -pyynnöt polkuun '/create'.
-// Huomaa: 'auth' on tässä **middleware**-funktio, joka suoritetaan ensin.
-// Se tarkistaa, onko käyttäjä todennettu ennen kuin sallitaan tehtävän luonti. 
+// Handles HTTP POST requests to '/create'.
+// The 'auth' middleware runs first and verifies the JWT token before this handler executes.
 router.post("/create", auth, async (req, res, next) => {
   try {
-    // Puretaan (destrukturoidaan) tehtäväobjekti pyynnön rungosta (req.body).
+    // Destructure the task object from the request body.
     const { task } = req.body;
 
-    // Tarkistetaan syötteen validiteetti: Onko 'task' olemassa ja onko sillä 'description'-kenttä.
+    // Input validation: task and its description field must exist.
     if (!task || !task.description) {
-      // Jos syöte puuttuu, palautetaan heti HTTP-tilakoodi 400 (Bad Request - Virheellinen pyyntö) ja virhesanoma.
+      // Return 400 Bad Request immediately if the required data is missing.
       return res.status(400).json({ error: "Task is required" });
     }
 
-    // Suoritetaan SQL-kysely, joka lisää uuden tehtävän (kuvauksen) 'task'-tauluun.
-    // Käytetään $1-paikkamerkkiä SQL-injektion estämiseksi.
-    // 'returning *' pyytää tietokantaa palauttamaan lisätyn rivin kaikki tiedot (sisältää uuden ID:n).
-    const { rows } = await pool.query(
-      "insert into task (description) values ($1) returning *",
-      [task.description] // $1-paikkamerkki korvataan 'task.description'-arvolla.
-    );
+    // Persist the new task to the in-memory store.
+    const created = await todoRepo.create(task.description);
 
-    // Jos luonti onnistuu, palautetaan asiakkaalle HTTP-tilakoodi 201 (Created - Luotu).
-    // Lähetetään vastauksena luotu rivi (ensimmäinen elementti 'rows'-taulukosta).
-    res.status(201).json(rows[0]);
+    // Respond with HTTP 201 (Created) and the newly created task object (includes its id).
+    res.status(201).json(created);
   } catch (err) {
-    // Jos tietokantakyselyssä tai muussa käsittelyssä tapahtuu virhe, siirretään se seuraavalle virheenkäsittelijälle.
+    // Forward any unexpected error to the error-handling middleware.
     next(err);
   }
 });
 
-// --- Moduulin vienti ---
+// --- Module export ---
 
-export { router }; // Viedään tämä reititin, jotta se voidaan tuoda ja liittää Express-pääsovellukseen (kuten edellisessä tiedostossa nähtiin: app.use("/", todoRouter);).
+export { router };
